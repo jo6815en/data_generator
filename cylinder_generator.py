@@ -19,7 +19,7 @@ def generate_cylinders(
     xmin=-2, xmax=6,
     ymin=-3, ymax=3,
     r_min=0.3, r_max=0.8,
-    h_min=1.0, h_max=3.0,
+    h=50,
     seed=None
 ):
     if seed is not None:
@@ -31,7 +31,6 @@ def generate_cylinders(
         r = random.uniform(r_min, r_max)
         x = random.uniform(xmin + r, xmax - r)
         y = random.uniform(ymin + r, ymax - r)
-        h = random.uniform(h_min, h_max)
 
         if not is_overlapping(x, y, r, cylinders):
             cylinders.append((x, y, r, h))

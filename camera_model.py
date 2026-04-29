@@ -5,55 +5,87 @@ import random
 # Kamera-klass (3D)
 # -----------------------
 class Camera3D:
-    def __init__(self, position):
-        self.c = np.array(position)
+    def __init__(self, position, theta_xy):
+        self.c = np.array(position, dtype=float)
+        self.theta_xy = theta_xy
 
-        # rektifierad: tittar alltid längs +Z
-        self.dir = np.array([0.0, 0.0, 1.0])
+        # optisk axel i XY-planet
+        self.dir = np.array([
+            np.cos(theta_xy),
+            np.sin(theta_xy),
+            0.0
+        ])
 
-        # kamerakoordinatsystem (standard)
-        self.right = np.array([1.0, 0.0, 0.0])
-        self.up    = np.array([0.0, 1.0, 0.0])
+        # kameran hålls upprätt i z-led
+        self.up = np.array([0.0, 0.0, 1.0])
+
+        # höger-vektor i bildplanet
+        self.right = np.array([
+            -np.sin(theta_xy),
+             np.cos(theta_xy),
+             0.0
+        ])
 
 
 # -----------------------
-# Skapa rektifierat kamerapar
+# Skapa kamerapar
 # -----------------------
-def look_at_direction(cam_pos, target_xy):
-    dir_xy = target_xy - cam_pos[:2]
-    dir_xy = dir_xy / np.linalg.norm(dir_xy)
-
-    # lägg till Z-komponent (så vi tittar framåt också)
-    dir_3d = np.array([dir_xy[0], dir_xy[1], 1.0])
-    return dir_3d / np.linalg.norm(dir_3d)
-
-
-def create_camera_pair(cylinders, bounds, seed=None, baseline=2.0):
+def create_camera_pair(cylinders, bounds, seed=None, baseline_range=(1.0, 3.0), angle_jitter_deg=45, pad=2.0):
     if seed is not None:
         random.seed(seed)
 
     xmin, xmax, ymin, ymax = bounds
 
-    # beräkna scenens centrum i XY
-    xs = [x for (x, _, _, _) in cylinders]
-    ys = [y for (_, y, _, _) in cylinders]
-
-    center_xy = np.array([np.mean(xs), np.mean(ys)])
-
-    # placera kameror utanför scenen (vänster sida)
-    cam1_pos = np.array([
-        xmin - 2.0,                           # utanför
-        (ymin + ymax) / 2,                    # mitten i y
-        2.0                                   # höjd
+    # scenens centrum
+    center_xy = np.array([
+        (xmin + xmax) / 2,
+        (ymin + ymax) / 2
     ])
 
-    cam2_pos = cam1_pos + np.array([baseline, 0.0, 0.0])
+    # -----------------------
+    # Slumpa mittpunkt för paret
+    # -----------------------
+    pair_center = np.array([
+        random.uniform(xmin - pad, xmax + pad),
+        random.uniform(ymin - pad, ymax + pad),
+        np.mean([h for (_, _, _, h) in cylinders]) / 2
+    ])
 
-    cam1 = Camera3D(cam1_pos)
-    cam2 = Camera3D(cam2_pos)
+    # -----------------------
+    # Slumpa baseline (XY-plan)
+    # -----------------------
+    baseline = random.uniform(*baseline_range)
+    angle = random.uniform(0, 2*np.pi)
 
-    cam1.dir = look_at_direction(cam1_pos, center_xy)
-    cam2.dir = look_at_direction(cam2_pos, center_xy)
+    offset = np.array([
+        np.cos(angle) * baseline,
+        np.sin(angle) * baseline,
+        0.0
+    ])
+
+    cam1_pos = pair_center - 0.5 * offset
+    cam2_pos = pair_center + 0.5 * offset
+
+    # -----------------------
+    # Riktning mot scen + jitter
+    # -----------------------
+    def sample_theta(cam_pos):
+        base_angle = np.arctan2(
+            center_xy[1] - cam_pos[1],
+            center_xy[0] - cam_pos[0]
+        )
+
+        jitter = np.deg2rad(random.uniform(-angle_jitter_deg, angle_jitter_deg))
+        return base_angle + jitter
+
+    theta1 = sample_theta(cam1_pos)
+    theta2 = sample_theta(cam2_pos)
+
+    # -----------------------
+    # Skapa kameror
+    # -----------------------
+    cam1 = Camera3D(cam1_pos, theta1)
+    cam2 = Camera3D(cam2_pos, theta2)
 
     return cam1, cam2
 
@@ -64,15 +96,14 @@ def create_camera_pair(cylinders, bounds, seed=None, baseline=2.0):
 def project_point(cam, point):
     p = point - cam.c
 
-    # bakom kamera
-    if p[2] <= 0:
+    depth = np.dot(p, cam.dir)
+    if depth <= 0:
         return None
 
-    # pinhole f=1
-    u = p[0] / p[2]
-    v = p[1] / p[2]
+    u = np.dot(p, cam.right) / depth
+    v = np.dot(p, cam.up) / depth
 
-    return np.array([u, v])
+    return np.array([u, v]), depth
 
 
 # -----------------------
@@ -81,23 +112,49 @@ def project_point(cam, point):
 def project_cylinder(cam, cylinder):
     x, y, r, h = cylinder
 
-    # ta mitten av cylindern
-    center = np.array([x, y, h / 2])
+    # riktning vinkelrät mot kamerans riktning
+    perp = np.array([-cam.dir[1], cam.dir[0], 0])
+    perp = perp / np.linalg.norm(perp)
 
-    proj = project_point(cam, center)
-    if proj is None:
+    # två sidopunkter
+    left  = np.array([x, y, 0]) + perp * r
+    right = np.array([x, y, 0]) - perp * r
+
+    # topp/botten
+    bottom_l = left
+    top_l    = left + np.array([0, 0, h])
+
+    bottom_r = right
+    top_r    = right + np.array([0, 0, h])
+
+    res_l1 = project_point(cam, bottom_l)
+    res_l2 = project_point(cam, top_l)
+
+    res_r1 = project_point(cam, bottom_r)
+    res_r2 = project_point(cam, top_r)
+
+    if None in [res_l1, res_l2, res_r1, res_r2]:
         return None
 
-    # approx skala (perspektiv)
-    scale = 1.0 / center[2]
-    r_proj = r * scale
+    (u_l, v_l1), d1 = res_l1
+    (u_l2, v_l2), d2 = res_l2
 
-    return proj, r_proj
+    (u_r, v_r1), d3 = res_r1
+    (u_r2, v_r2), d4 = res_r2
+
+    u_min = min(u_l, u_l2, u_r, u_r2)
+    u_max = max(u_l, u_l2, u_r, u_r2)
+
+    v_min = min(v_l1, v_l2, v_r1, v_r2)
+    v_max = max(v_l1, v_l2, v_r1, v_r2)
+
+    d = (d1 + d2 + d3 + d4) / 4
+
+    return u_min, u_max, v_min, v_max, d
 
 
 # -----------------------
-# Beräkna "visibility"
-# (nu enklare: ingen 1D ocklusion ännu)
+# Beräkna visibility
 # -----------------------
 def compute_visibility(cam, cylinders):
     projections = []
@@ -108,13 +165,10 @@ def compute_visibility(cam, cylinders):
         if res is None:
             continue
 
-        (u, v), r_proj = res
+        # 🔥 korrekt unpacking
+        u_min, u_max, v_min, v_max, d = res
 
-        # approx depth
-        center = np.array([cyl[0], cyl[1], cyl[3]/2])
-        d = np.linalg.norm(center - cam.c)
-
-        projections.append((i, u, v, r_proj, d))
+        projections.append((i, u_min, u_max, v_min, v_max, d))
 
     return projections
 
@@ -129,3 +183,4 @@ def compute_camera_pair(cylinders, bounds, seed=None):
     proj2 = compute_visibility(cam2, cylinders)
 
     return cam1, cam2, proj1, proj2
+
