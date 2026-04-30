@@ -5,26 +5,24 @@ import random
 # Kamera-klass (3D)
 # -----------------------
 class Camera3D:
-    def __init__(self, position, theta_xy):
+    def __init__(self, position, theta_xy, fov_deg=90):
         self.c = np.array(position, dtype=float)
         self.theta_xy = theta_xy
 
-        # optisk axel i XY-planet
         self.dir = np.array([
             np.cos(theta_xy),
             np.sin(theta_xy),
             0.0
         ])
 
-        # kameran hålls upprätt i z-led
         self.up = np.array([0.0, 0.0, 1.0])
-
-        # höger-vektor i bildplanet
         self.right = np.array([
             -np.sin(theta_xy),
              np.cos(theta_xy),
              0.0
         ])
+
+        self.fov = np.deg2rad(fov_deg)
 
 
 # -----------------------
@@ -153,6 +151,19 @@ def project_cylinder(cam, cylinder):
     return u_min, u_max, v_min, v_max, d
 
 
+def in_fov(cam, point):
+    p = point - cam.c
+    p_norm = np.linalg.norm(p)
+
+    if p_norm < 1e-6:
+        return False
+
+    cos_angle = np.dot(p, cam.dir) / p_norm
+    angle = np.arccos(np.clip(cos_angle, -1, 1))
+
+    return angle < cam.fov / 2
+
+
 # -----------------------
 # Beräkna visibility
 # -----------------------
@@ -160,14 +171,18 @@ def compute_visibility(cam, cylinders):
     projections = []
 
     for i, cyl in enumerate(cylinders):
-        res = project_cylinder(cam, cyl)
+        x, y, r, h = cyl
 
+        center = np.array([x, y, h/2])
+
+        if not in_fov(cam, center):
+            continue
+
+        res = project_cylinder(cam, cyl)
         if res is None:
             continue
 
-        # 🔥 korrekt unpacking
         u_min, u_max, v_min, v_max, d = res
-
         projections.append((i, u_min, u_max, v_min, v_max, d))
 
     return projections
