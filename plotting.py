@@ -128,7 +128,7 @@ def draw_fov_cone(ax, cam, fov_u, length=5.0, color='black'):
     ax.fill(cone_x, cone_y, color=color, alpha=0.1)
 
     
-
+    
 def plot_top_view_scene(ax, cylinders, cam1, cam2, colors=None, pad=0.5, title="Top view"):
     """
     Plottar cylindrar och två kameror i top view (xy-planet).

@@ -16,10 +16,13 @@ class Camera3D:
         ])
 
         self.up = np.array([0.0, 0.0, 1.0])
+
+        # Högerhänt bas:
+        # right = dir x up
         self.right = np.array([
-            -np.sin(theta_xy),
-             np.cos(theta_xy),
-             0.0
+            np.sin(theta_xy),
+            -np.cos(theta_xy),
+            0.0
         ])
 
         self.fov = np.deg2rad(fov_deg)
@@ -210,12 +213,11 @@ def transform_scene_to_cam1(cam1, cam2, cylinders):
     d = cam1.dir   / np.linalg.norm(cam1.dir)
     u = cam1.up    / np.linalg.norm(cam1.up)
 
-    # Kolumner = världens riktningar för cam1:s lokala axlar
     B = np.column_stack([r, d, u])
 
     def to_local_point(p):
         v = np.asarray(p, dtype=float) - cam1.c
-        return B.T @ v   # <-- viktigt: transponera här
+        return B.T @ v
 
     def to_local_vec(v):
         v = np.asarray(v, dtype=float)
@@ -227,6 +229,7 @@ def transform_scene_to_cam1(cam1, cam2, cylinders):
         cam_new.dir = to_local_vec(cam.dir)
         cam_new.up = to_local_vec(cam.up)
         cam_new.right = to_local_vec(cam.right)
+        cam_new.theta_xy = np.arctan2(cam_new.dir[1], cam_new.dir[0])
         return cam_new
 
     cam1_t = transform_camera(cam1)
