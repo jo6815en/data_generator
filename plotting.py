@@ -153,14 +153,30 @@ def plot_top_view_scene(ax, cylinders, cam1, cam2, colors=None, pad=0.5, title="
         colors = [f"C{i % 10}" for i in range(len(cylinders))]
 
     # Bestäm plotgränser från cylindrar och kameror
-    all_x = [x for (x, _, _, _) in cylinders] + [cam1.c[0], cam2.c[0]]
-    all_y = [y for (_, y, _, _) in cylinders] + [cam1.c[1], cam2.c[1]]
+    all_x = []
+    all_y = []
+
+    for cyl in cylinders:
+        if len(cyl) == 5:
+            x, y, z, r, h = cyl
+        else:
+            x, y, r, h = cyl
+        all_x.append(x)
+        all_y.append(y)
+
+    all_x += [cam1.c[0], cam2.c[0]]
+    all_y += [cam1.c[1], cam2.c[1]]
 
     xmin, xmax = min(all_x) - pad, max(all_x) + pad
     ymin, ymax = min(all_y) - pad, max(all_y) + pad
 
     # Cylindrar
-    for i, (x, y, r, h) in enumerate(cylinders):
+    for i, cyl in enumerate(cylinders):
+        if len(cyl) == 5:
+            x, y, z, r, h = cyl
+        else:
+            x, y, r, h = cyl
+
         circ = plt.Circle((x, y), r, fill=False, color=colors[i])
         ax.add_patch(circ)
         ax.text(x, y, str(i), ha="center", va="center")

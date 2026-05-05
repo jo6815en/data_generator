@@ -105,13 +105,18 @@ def project_point(cam, point):
 # Projektion av cylinder
 # -----------------------
 def project_cylinder(cam, cylinder):
-    x, y, r, h = cylinder
+    if len(cylinder) == 5:
+        x, y, z, r, h = cylinder
+    else:
+        x, y, r, h = cylinder
+        z = 0.0
 
     perp = np.array([-cam.dir[1], cam.dir[0], 0.0])
     perp = perp / np.linalg.norm(perp)
 
-    left = np.array([x, y, 0.0]) + perp * r
-    right = np.array([x, y, 0.0]) - perp * r
+    base = np.array([x, y, z])
+    left = base + perp * r
+    right = base - perp * r
 
     bottom_l = left
     top_l = left + np.array([0.0, 0.0, h])
@@ -148,8 +153,13 @@ def compute_visibility(cam, cylinders):
     projections = []
 
     for i, cyl in enumerate(cylinders):
-        x, y, r, h = cyl
-        center = np.array([x, y, h / 2])
+        if len(cyl) == 5:
+            x, y, z, r, h = cyl
+        else:
+            x, y, r, h = cyl
+            z = 0.0
+
+        center = np.array([x, y, z + h / 2])
 
         if not in_fov(cam, center):
             continue
@@ -235,8 +245,9 @@ def transform_scene_to_cam1(cam1, cam2, cylinders):
     cam2_t = transform_camera(cam2)
 
     cylinders_t = []
+
     for x, y, r_cyl, h in cylinders:
         base_t = to_local_point([x, y, 0.0])
-        cylinders_t.append((base_t[0], base_t[1], r_cyl, h))
+        cylinders_t.append((base_t[0], base_t[1], base_t[2], r_cyl, h))
 
     return cam1_t, cam2_t, cylinders_t
