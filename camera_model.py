@@ -199,3 +199,55 @@ def compute_camera_pair(cylinders, bounds, seed=None):
 
     return cam1, cam2, proj1, proj2
 
+
+# ---------------------------
+# Flytta allt till kamera 1
+# ---------------------------
+from copy import deepcopy
+
+def transform_scene_to_cam1(cam1, cam2, cylinders):
+    """
+    Flytta hela scenen till cam1:s koordinatsystem:
+      - cam1 hamnar i origo
+      - cam1 pekar längs +y
+      - z uppåt
+
+    Returnerar nya kameror + cylindrar i cam1-koordinater.
+    """
+
+    # Lokal bas för cam1:
+    # x = right, y = dir, z = up
+    r = cam1.right / np.linalg.norm(cam1.right)
+    d = cam1.dir   / np.linalg.norm(cam1.dir)
+    u = cam1.up    / np.linalg.norm(cam1.up)
+
+    def to_local_point(p):
+        v = np.asarray(p, dtype=float) - cam1.c
+        return np.array([v @ r, v @ d, v @ u])
+
+    def to_local_vec(v):
+        v = np.asarray(v, dtype=float)
+        return np.array([v @ r, v @ d, v @ u])
+
+    def transform_camera(cam):
+        cam_new = deepcopy(cam)
+        cam_new.c = to_local_point(cam.c)
+        cam_new.dir = to_local_vec(cam.dir)
+        cam_new.up = to_local_vec(cam.up)
+        cam_new.right = to_local_vec(cam.right)
+
+        # Håll theta_xy konsekvent med repo-konventionen:
+        # theta=0 -> +x, theta=pi/2 -> +y
+        cam_new.theta_xy = np.arctan2(cam_new.dir[1], cam_new.dir[0])
+
+        return cam_new
+
+    cam1_t = transform_camera(cam1)
+    cam2_t = transform_camera(cam2)
+
+    cylinders_t = []
+    for x, y, r_cyl, h in cylinders:
+        base_local = to_local_point([x, y, 0.0])
+        cylinders_t.append((base_local[0], base_local[1], r_cyl, h))
+
+    return cam1_t, cam2_t, cylinders_t

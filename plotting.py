@@ -4,21 +4,28 @@ import numpy as np
 # -----------------------
 # Rita kamera
 # -----------------------
-def draw_camera(ax, cam, color):
-    c = cam.c
-    d = cam.dir[:2]
-    d = d / np.linalg.norm(d)
+import numpy as np
 
-    arrow_len = 1.5  # 🔥 justera denna
+def draw_camera(ax, cam, color, arrow_len=1.5, marker_size=45, label=None):
+    c = np.asarray(cam.c, dtype=float)
+    d = np.asarray(cam.dir[:2], dtype=float)
 
-    ax.plot(c[0], c[1], 'o', color=color)
-    ax.arrow(
-        c[0], c[1],
-        d[0] * arrow_len,
-        d[1] * arrow_len,
-        head_width=0.2,
-        color=color
+    n = np.linalg.norm(d)
+    if n < 1e-12:
+        return
+    d = d / n
+
+    ax.scatter(c[0], c[1], s=marker_size, color=color, zorder=5)
+    ax.annotate(
+        "",
+        xy=(c[0] + d[0] * arrow_len, c[1] + d[1] * arrow_len),
+        xytext=(c[0], c[1]),
+        arrowprops=dict(arrowstyle="-|>", color=color, lw=2, mutation_scale=18),
+        zorder=6,
     )
+
+    if label is not None:
+        ax.text(c[0], c[1], label, color=color, fontsize=10, ha="left", va="bottom")
 
 
 # -----------------------
@@ -45,8 +52,8 @@ def plot_camera_pair(
         ax.add_patch(circ)
         ax.text(x, y, str(i), fontsize=10, ha='center', va='center')
 
-    draw_camera(ax, cam1, 'red')
-    draw_camera(ax, cam2, 'blue')
+    draw_camera(ax, cam1, "red", label="1")
+    draw_camera(ax, cam2, "blue", label="2")
 
     ax.set_aspect('equal')
     ax.set_xlim(xmin, xmax)
@@ -120,6 +127,52 @@ def draw_fov_cone(ax, cam, fov_u, length=5.0, color='black'):
 
     ax.fill(cone_x, cone_y, color=color, alpha=0.1)
 
-    print("FOV:", -fov_u, fov_u)
-
     
+
+def plot_top_view_scene(ax, cylinders, cam1, cam2, colors=None, pad=0.5, title="Top view"):
+    """
+    Plottar cylindrar och två kameror i top view (xy-planet).
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axeln att rita på.
+    cylinders : list[tuple]
+        Lista med (x, y, r, h).
+    cam1, cam2 : Camera3D
+        Kamerorna som ska ritas.
+    colors : list or None
+        Valfria färger för cylindrarna.
+    pad : float
+        Marginal runt all data.
+    title : str
+        Titel för plotten.
+    """
+
+    if colors is None:
+        colors = [f"C{i % 10}" for i in range(len(cylinders))]
+
+    # Bestäm plotgränser från cylindrar och kameror
+    all_x = [x for (x, _, _, _) in cylinders] + [cam1.c[0], cam2.c[0]]
+    all_y = [y for (_, y, _, _) in cylinders] + [cam1.c[1], cam2.c[1]]
+
+    xmin, xmax = min(all_x) - pad, max(all_x) + pad
+    ymin, ymax = min(all_y) - pad, max(all_y) + pad
+
+    # Cylindrar
+    for i, (x, y, r, h) in enumerate(cylinders):
+        circ = plt.Circle((x, y), r, fill=False, color=colors[i])
+        ax.add_patch(circ)
+        ax.text(x, y, str(i), ha="center", va="center")
+
+    # Kameror och FOV
+    draw_camera(ax, cam1, "red")
+    draw_camera(ax, cam2, "blue")
+
+    draw_fov_cone(ax, cam1, fov_u=np.tan(cam1.fov / 2), color="red")
+    draw_fov_cone(ax, cam2, fov_u=np.tan(cam2.fov / 2), color="blue")
+
+    ax.set_aspect("equal")
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+    ax.set_title(title)
