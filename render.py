@@ -26,11 +26,11 @@ def _clip_rect_to_fov(u_min, u_max, v_min, v_max, fov_u, fov_v):
 
 
 def _rect_to_pixel_bounds(u0, u1, v0, v1, width, height, fov_u, fov_v):
-    # u: vänster -> höger
+    # u: vänster → höger
     c0 = int(round((u0 + fov_u) / (2 * fov_u) * (width - 1)))
     c1 = int(round((u1 + fov_u) / (2 * fov_u) * (width - 1)))
 
-    # v: upp -> ned i bild
+    # v: upp → ned (bildkoordinater)
     r0 = int(round((fov_v - v1) / (2 * fov_v) * (height - 1)))
     r1 = int(round((fov_v - v0) / (2 * fov_v) * (height - 1)))
 
@@ -48,10 +48,11 @@ def _rect_to_pixel_bounds(u0, u1, v0, v1, width, height, fov_u, fov_v):
     return r0, r1, c0, c1
 
 
+# -----------------------
+# MAIN RENDER
+# -----------------------
 def render_camera_image(
-    cam,
     projections,
-    cylinders,
     colors,
     image_size=(256, 256),
     fov_u=1.0,
@@ -59,14 +60,15 @@ def render_camera_image(
     background=(255, 255, 255),
 ):
     """
-    Renderar en kamera-bild direkt från projektionerna.
+    Renderar en kamera-bild från projektioner.
 
-    projektioner: [(i, u_min, u_max, v_min, v_max, d), ...]
+    projections: [(i, u_min, u_max, v_min, v_max, d), ...]
     """
+
     width, height = image_size
     img = np.full((height, width, 3), background, dtype=np.uint8)
 
-    # långt bort först, nära objekt ritas ovanpå
+    # Painter's algorithm: långt bort först
     projections = sorted(projections, key=lambda x: x[5], reverse=True)
 
     for (i, u_min, u_max, v_min, v_max, d) in projections:
@@ -85,10 +87,11 @@ def render_camera_image(
     return img
 
 
+# -----------------------
+# DEBUG RENDER
+# -----------------------
 def render_camera_image_debug(
-    cam,
     projections,
-    cylinders,
     colors,
     image_size=(256, 256),
     fov_u=1.0,
@@ -97,8 +100,9 @@ def render_camera_image_debug(
     alpha=0.35,
 ):
     """
-    Debug-version med kanter och lite genomskinlighet.
+    Debug-render med transparens och kanter.
     """
+
     width, height = image_size
     img = np.full((height, width, 3), background, dtype=np.float32)
 
@@ -117,10 +121,12 @@ def render_camera_image_debug(
         r0, r1, c0, c1 = bounds
         rgb = _color_to_rgb255(colors[i]).astype(np.float32)
 
-        # fyll rektangeln
-        img[r0:r1 + 1, c0:c1 + 1] = (1.0 - alpha) * img[r0:r1 + 1, c0:c1 + 1] + alpha * rgb
+        # Fyll
+        img[r0:r1 + 1, c0:c1 + 1] = (
+            (1.0 - alpha) * img[r0:r1 + 1, c0:c1 + 1] + alpha * rgb
+        )
 
-        # kanter för tydlighet
+        # Kanter
         img[r0:r0 + 1, c0:c1 + 1] = rgb
         img[r1:r1 + 1, c0:c1 + 1] = rgb
         img[r0:r1 + 1, c0:c0 + 1] = rgb
