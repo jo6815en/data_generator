@@ -17,7 +17,7 @@ def build_vision_matrix(projections, cylinders,
 
     for (idx, u0, u1, v_min, v_max, d) in projections:
 
-        r = cylinders[idx][2]
+        r = cylinders[idx][3]
 
         # klipp till FOV
         u0_clip = max(u0, u_min)
