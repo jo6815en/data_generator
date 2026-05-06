@@ -217,6 +217,45 @@ def in_fov(cam, point):
 # ---------------------------
 # Flytta allt till kamera 1
 # ---------------------------
+def get_relative_pose(cam1_n, cam2_n):
+    """
+    Returnerar cam2:s pose relativt cam1.
+
+    Antagande:
+      cam1_n och cam2_n är redan uttryckta i cam1:s koordinatsystem.
+
+    Return:
+      - cam2_in_cam1: cam2:s center och orientering i cam1-ramen
+      - R_cam1_to_cam2, t_cam1_to_cam2: extrinsic som mappar en punkt i cam1-ramen till cam2-ramen
+        p_cam2 = R_cam1_to_cam2 @ p_cam1 + t_cam1_to_cam2
+    """
+
+    r2 = cam2_n.right / np.linalg.norm(cam2_n.right)
+    d2 = cam2_n.dir / np.linalg.norm(cam2_n.dir)
+    u2 = cam2_n.up / np.linalg.norm(cam2_n.up)
+
+    # cam2:s lokala bas uttryckt i cam1-ramen
+    R_cam2_in_cam1 = np.column_stack([r2, d2, u2])
+
+    # Transformation från cam1-ram till cam2-ram
+    # p_cam2 = R @ p_cam1 + t
+    R_cam1_to_cam2 = R_cam2_in_cam1.T
+    t_cam1_to_cam2 = -R_cam1_to_cam2 @ cam2_n.c
+
+    relative_pose = {
+        "cam2_in_cam1": {
+            "c": cam2_n.c.copy(),
+            "dir": cam2_n.dir.copy(),
+            "up": cam2_n.up.copy(),
+            "right": cam2_n.right.copy(),
+            "theta_xy": cam2_n.theta_xy,
+        },
+        "R_cam1_to_cam2": R_cam1_to_cam2,
+        "t_cam1_to_cam2": t_cam1_to_cam2,
+    }
+
+    return relative_pose
+
 def transform_scene_to_cam1(cam1, cam2, cylinders):
     r = cam1.right / np.linalg.norm(cam1.right)
     d = cam1.dir   / np.linalg.norm(cam1.dir)
