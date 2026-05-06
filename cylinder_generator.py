@@ -4,8 +4,13 @@ import random
 # -----------------------
 # Overlap (i XY-plan)
 # -----------------------
+# cylinder_generator.py
 def is_overlapping(x, y, r, cylinders):
-    for (cx, cy, cr, _) in cylinders:
+    for cyl in cylinders:
+        if len(cyl) == 5:
+            cx, cy, _, cr, _ = cyl
+        else:
+            cx, cy, cr, _ = cyl
         if np.hypot(x - cx, y - cy) < (r + cr):
             return True
     return False
@@ -33,6 +38,6 @@ def generate_cylinders(
         y = random.uniform(ymin + r, ymax - r)
 
         if not is_overlapping(x, y, r, cylinders):
-            cylinders.append((x, y, r, h))
+            cylinders.append((x, y, 0.0, r, h))
 
     return cylinders, (xmin, xmax, ymin, ymax)

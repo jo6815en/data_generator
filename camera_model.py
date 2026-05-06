@@ -44,35 +44,48 @@ def create_camera_pair(
 
     xmin, xmax, ymin, ymax = bounds
 
-    # Scenens centrum i xy
+    def unpack_cylinder(cyl):
+        if len(cyl) == 5:
+            x, y, z, r, h = cyl
+        elif len(cyl) == 4:
+            x, y, r, h = cyl
+            z = 0.0
+        else:
+            raise ValueError(f"Unexpected cylinder format: {cyl}")
+        return x, y, z, r, h
+
+    cyls = [unpack_cylinder(c) for c in cylinders]
+
     center_xy = np.array([
         (xmin + xmax) / 2,
-        (ymin + ymax) / 2
+        (ymin + ymax) / 2,
     ])
 
-    # Placera parets mittpunkt nära scenen
+    if len(cyls) > 0:
+        pair_center_z = np.mean([z + h / 2 for (_, _, z, _, h) in cyls])
+    else:
+        pair_center_z = 0.0
+
     pair_center = np.array([
         random.uniform(xmin - pad, xmax + pad),
         random.uniform(ymin - pad, ymax + pad),
-        np.mean([h for (_, _, _, h) in cylinders]) / 2
+        pair_center_z,
     ])
 
-    # Fast avstånd mellan kamerorna
     angle = random.uniform(0, 2 * np.pi)
     offset = np.array([
         np.cos(angle) * camera_distance,
         np.sin(angle) * camera_distance,
-        0.0
+        0.0,
     ])
 
     cam1_pos = pair_center - 0.5 * offset
     cam2_pos = pair_center + 0.5 * offset
 
-    # Riktning mot scenens centrum + jitter
     def sample_theta(cam_pos):
         base_angle = np.arctan2(
             center_xy[1] - cam_pos[1],
-            center_xy[0] - cam_pos[0]
+            center_xy[0] - cam_pos[0],
         )
         jitter = np.deg2rad(random.uniform(-angle_jitter_deg, angle_jitter_deg))
         return base_angle + jitter
@@ -82,7 +95,6 @@ def create_camera_pair(
 
     cam1 = Camera3D(cam1_pos, theta1)
     cam2 = Camera3D(cam2_pos, theta2)
-
     return cam1, cam2
 
 
@@ -258,8 +270,8 @@ def get_relative_pose(cam1_n, cam2_n):
 
 def transform_scene_to_cam1(cam1, cam2, cylinders):
     r = cam1.right / np.linalg.norm(cam1.right)
-    d = cam1.dir   / np.linalg.norm(cam1.dir)
-    u = cam1.up    / np.linalg.norm(cam1.up)
+    d = cam1.dir / np.linalg.norm(cam1.dir)
+    u = cam1.up / np.linalg.norm(cam1.up)
 
     B = np.column_stack([r, d, u])
 
@@ -280,13 +292,23 @@ def transform_scene_to_cam1(cam1, cam2, cylinders):
         cam_new.theta_xy = np.arctan2(cam_new.dir[1], cam_new.dir[0])
         return cam_new
 
+    def unpack_cylinder(cyl):
+        if len(cyl) == 5:
+            x, y, z, r_cyl, h = cyl
+        elif len(cyl) == 4:
+            x, y, r_cyl, h = cyl
+            z = 0.0
+        else:
+            raise ValueError(f"Unexpected cylinder format: {cyl}")
+        return x, y, z, r_cyl, h
+
     cam1_t = transform_camera(cam1)
     cam2_t = transform_camera(cam2)
 
     cylinders_t = []
-
-    for x, y, r_cyl, h in cylinders:
-        base_t = to_local_point([x, y, 0.0])
+    for cyl in cylinders:
+        x, y, z, r_cyl, h = unpack_cylinder(cyl)
+        base_t = to_local_point([x, y, z])
         cylinders_t.append((base_t[0], base_t[1], base_t[2], r_cyl, h))
 
     return cam1_t, cam2_t, cylinders_t
