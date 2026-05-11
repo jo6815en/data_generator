@@ -1,6 +1,21 @@
 import numpy as np
 from matplotlib.colors import to_rgb
+from pathlib import Path
+import random
+from PIL import Image
 
+BG_DIR = Path("backgrounds")
+BG_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def _load_random_background(image_size):
+    files = [p for p in BG_DIR.iterdir() if p.suffix.lower() in BG_EXTS]
+    if not files:
+        raise FileNotFoundError(f"Inga bakgrundsbilder hittades i {BG_DIR}")
+
+    bg_path = random.choice(files)
+    bg = Image.open(bg_path).convert("RGB").resize(image_size, Image.Resampling.LANCZOS)
+    return np.array(bg, dtype=np.uint8)
 
 def _color_to_rgb255(color):
     rgb = np.array(to_rgb(color), dtype=float)
@@ -57,18 +72,15 @@ def render_camera_image(
     image_size=(256, 256),
     fov_u=1.0,
     fov_v=1.0,
-    background=(255, 255, 255),
+    background=None,   # None => slumpad bakgrund från backgrounds/
 ):
-    """
-    Renderar en kamera-bild från projektioner.
-
-    projections: [(i, u_min, u_max, v_min, v_max, d), ...]
-    """
-
     width, height = image_size
-    img = np.full((height, width, 3), background, dtype=np.uint8)
 
-    # Painter's algorithm: långt bort först
+    if background is None:
+        img = _load_random_background(image_size)
+    else:
+        img = np.full((height, width, 3), background, dtype=np.uint8)
+
     projections = sorted(projections, key=lambda x: x[5], reverse=True)
 
     for (i, u_min, u_max, v_min, v_max, d) in projections:
