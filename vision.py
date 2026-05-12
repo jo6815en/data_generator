@@ -3,8 +3,9 @@ import numpy as np
 # -----------------------
 # Bygg vision matrix
 # -----------------------
-def build_vision_matrix(projections, cylinders,
-                        num_bins=32, u_min=-1.0, u_max=1.0):
+import numpy as np
+
+def build_vision_matrix(projections, cylinders, num_bins=32, u_min=-1.0, u_max=1.0):
     """
     projections: [(idx, u_min, u_max, v_min, v_max, d)]
     cylinders: [(x, y, r, h)]
@@ -16,7 +17,6 @@ def build_vision_matrix(projections, cylinders,
     mat = np.zeros((num_bins, 3))
 
     for (idx, u0, u1, v_min, v_max, d) in projections:
-
         r = cylinders[idx][3]
 
         # klipp till FOV
@@ -26,19 +26,19 @@ def build_vision_matrix(projections, cylinders,
         if u0_clip >= u1_clip:
             continue
 
-        # bin-index
-        b_start = int((u0_clip - u_min) / bin_size)
-        b_end   = int((u1_clip - u_min) / bin_size)
+        # NYTT: använd bara cylinderns mittpunkt i projektionen
+        u_center = 0.5 * (u0_clip + u1_clip)
 
-        for b in range(b_start, b_end + 1):
-            if b < 0 or b >= num_bins:
-                continue
+        b = int((u_center - u_min) / bin_size)
 
-            # välj närmaste objekt (occlusion)
-            if mat[b, 0] == 0 or d < mat[b, 2]:
-                mat[b, 0] = 1      # occupancy
-                mat[b, 1] = r      # radius
-                mat[b, 2] = d      # depth
+        if b < 0 or b >= num_bins:
+            continue
+
+        # välj närmaste objekt om flera hamnar i samma bin
+        if mat[b, 0] == 0 or d < mat[b, 2]:
+            mat[b, 0] = 1  # occupancy
+            mat[b, 1] = r  # radius
+            mat[b, 2] = d  # depth
 
     return mat
 
