@@ -38,6 +38,10 @@ def create_camera_pair(
     camera_distance=2.0,
     angle_jitter_deg=45,
     pad=2.0,
+    min_cam_cyl_dist=1.0,
+    max_cam_cyl_dist=7.0,
+    min_visible=2,
+    max_tries=1000,
 ):
     if seed is not None:
         random.seed(seed)
@@ -66,21 +70,25 @@ def create_camera_pair(
     else:
         pair_center_z = 0.0
 
-    pair_center = np.array([
-        random.uniform(xmin - pad, xmax + pad),
-        random.uniform(ymin - pad, ymax + pad),
-        pair_center_z,
-    ])
+    def valid_camera_distance(cam_pos):
+        for x, y, z, r, h in cyls:
+            dist_xy = np.linalg.norm(cam_pos[:2] - np.array([x, y]))
 
-    angle = random.uniform(0, 2 * np.pi)
-    offset = np.array([
-        np.cos(angle) * camera_distance,
-        np.sin(angle) * camera_distance,
-        0.0,
-    ])
+            # avstånd till cylinderns yta, inte till centrum
+            surface_dist = dist_xy - r
 
-    cam1_pos = pair_center - 0.5 * offset
-    cam2_pos = pair_center + 0.5 * offset
+            if surface_dist < min_cam_cyl_dist:
+                return False
+
+        nearest_surface_dist = min(
+            np.linalg.norm(cam_pos[:2] - np.array([x, y])) - r
+            for x, y, z, r, h in cyls
+        )
+
+        if nearest_surface_dist > max_cam_cyl_dist:
+            return False
+
+        return True
 
     def sample_theta(cam_pos):
         base_angle = np.arctan2(
@@ -90,13 +98,50 @@ def create_camera_pair(
         jitter = np.deg2rad(random.uniform(-angle_jitter_deg, angle_jitter_deg))
         return base_angle + jitter
 
-    theta1 = sample_theta(cam1_pos)
-    theta2 = sample_theta(cam2_pos)
+    for _ in range(max_tries):
+        pair_center = np.array([
+            random.uniform(xmin - pad, xmax + pad),
+            random.uniform(ymin - pad, ymax + pad),
+            pair_center_z,
+        ])
 
-    cam1 = Camera3D(cam1_pos, theta1)
-    cam2 = Camera3D(cam2_pos, theta2)
-    return cam1, cam2
+        angle = random.uniform(0, 2 * np.pi)
 
+        offset = np.array([
+            np.cos(angle) * camera_distance,
+            np.sin(angle) * camera_distance,
+            0.0,
+        ])
+
+        cam1_pos = pair_center - 0.5 * offset
+        cam2_pos = pair_center + 0.5 * offset
+
+        if not valid_camera_distance(cam1_pos):
+            continue
+        if not valid_camera_distance(cam2_pos):
+            continue
+
+        theta1 = sample_theta(cam1_pos)
+        theta2 = sample_theta(cam2_pos)
+
+        cam1 = Camera3D(cam1_pos, theta1)
+        cam2 = Camera3D(cam2_pos, theta2)
+
+        proj1 = compute_visibility(cam1, cylinders)
+        proj2 = compute_visibility(cam2, cylinders)
+
+        if len(proj1) < min_visible:
+            continue
+        if len(proj2) < min_visible:
+            continue
+
+        return cam1, cam2
+
+    raise RuntimeError(
+        "Could not sample a valid camera pair. "
+        "Try lowering min_cam_cyl_dist, lowering min_visible, "
+        "increasing max_cam_cyl_dist, increasing pad, or increasing max_tries."
+    )
 
 # -----------------------
 # Projektion (pinhole)
@@ -190,27 +235,6 @@ def compute_projections(cam1, cam2, cylinders):
     proj1 = compute_visibility(cam1, cylinders)
     proj2 = compute_visibility(cam2, cylinders)
     return proj1, proj2
-
-
-# -----------------------
-# Bekvämlighetsfunktion
-# -----------------------
-def compute_camera_pair(
-    cylinders,
-    bounds,
-    seed=None,
-    camera_distance=2.0,
-    angle_jitter_deg=45,
-    pad=2.0,
-):
-    return create_camera_pair(
-        cylinders=cylinders,
-        bounds=bounds,
-        seed=seed,
-        camera_distance=camera_distance,
-        angle_jitter_deg=angle_jitter_deg,
-        pad=pad,
-    )
 
 
 def in_fov(cam, point):
