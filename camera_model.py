@@ -41,7 +41,7 @@ def create_camera_pair(
     min_cam_cyl_dist=1.0,
     max_cam_cyl_dist=7.0,
     min_visible=2,
-    max_tries=1000,
+    max_tries=5000,
 ):
     if seed is not None:
         random.seed(seed)
@@ -91,12 +91,20 @@ def create_camera_pair(
         return True
 
     def sample_theta(cam_pos):
+        # sikta ungefär mot cylindrarnas centroid
+        target_xy = np.array([
+            np.mean([x for (x, y, z, r, h) in cyls]),
+            np.mean([y for (x, y, z, r, h) in cyls]),
+        ])
+
         base_angle = np.arctan2(
-            center_xy[1] - cam_pos[1],
-            center_xy[0] - cam_pos[0],
+            target_xy[1] - cam_pos[1],
+            target_xy[0] - cam_pos[0],
         )
+
         jitter = np.deg2rad(random.uniform(-angle_jitter_deg, angle_jitter_deg))
         return base_angle + jitter
+        
 
     for _ in range(max_tries):
         pair_center = np.array([
