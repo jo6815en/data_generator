@@ -50,7 +50,10 @@ def build_vision_matrix(
     for (idx, u0, u1, v_min, v_max, d) in projections:
         x, y, r, h = unpack_cylinder(cylinders[idx])
 
-        theta = math.atan2(y, x)
+        u_center = 0.5 * (u0 + u1)
+        theta = math.atan(u_center)
+
+        # theta = math.atan2(y, x)
 
         b = angle_to_bin(
             theta,
