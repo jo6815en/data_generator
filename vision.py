@@ -62,10 +62,26 @@ def build_vision_matrix(
 # -----------------------
 # Convenience
 # -----------------------
-def build_vision_pair(proj1, proj2, cylinders,
-                      num_bins=32, u_min=-1.0, u_max=1.0):
 
-    mat1 = build_vision_matrix(proj1, cylinders, num_bins, u_min, u_max)
-    mat2 = build_vision_matrix(proj2, cylinders, num_bins, u_min, u_max)
+def build_vision_pair(
+    proj1,
+    proj2,
+    cylinders,
+    num_bins=32,
+    fov_degrees=90.0,
+):
+    mat1 = build_vision_matrix(
+        proj1,
+        cylinders,
+        num_bins=num_bins,
+        fov_degrees=fov_degrees,
+    )
+
+    mat2 = build_vision_matrix(
+        proj2,
+        cylinders,
+        num_bins=num_bins,
+        fov_degrees=fov_degrees,
+    )
 
     return mat1, mat2
