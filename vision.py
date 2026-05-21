@@ -5,6 +5,17 @@ import math
 # Bygg vision matrix
 # -----------------------
 
+def unpack_cylinder(cyl):
+    if len(cyl) == 4:
+        x, y, r, h = cyl
+        return x, y, r, h
+
+    if len(cyl) == 5:
+        x, y, z, r, h = cyl
+        return x, y, r, h
+
+    raise ValueError(f"Unexpected cylinder format with len={len(cyl)}: {cyl}")  
+
 def angle_to_bin(theta, num_bins=128, fov_degrees=90.0):
     fov = math.radians(fov_degrees)
     theta_min = -0.5 * fov
@@ -37,7 +48,7 @@ def build_vision_matrix(
     mat = np.zeros((num_bins, 3), dtype=np.float32)
 
     for (idx, u0, u1, v_min, v_max, d) in projections:
-        x, y, r, h = cylinders[idx]
+        x, y, r, h = unpack_cylinder(cylinders[idx])
 
         theta = math.atan2(y, x)
 
