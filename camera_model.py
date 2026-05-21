@@ -206,9 +206,16 @@ def project_cylinder(cam, cylinder):
     u_max = max(u_l, u_l2, u_r, u_r2)
     v_min = min(v_l1, v_l2, v_r1, v_r2)
     v_max = max(v_l1, v_l2, v_r1, v_r2)
-    d = (d1 + d2 + d3 + d4) / 4
 
-    return u_min, u_max, v_min, v_max, d
+    # Vision-depth: radialt avstånd i top-down-planet.
+    # Detta matchar representationen:
+    #   x = d * cos(theta)
+    #   y = d * sin(theta)
+    center = np.array([x, y, z], dtype=float)
+    relative = center - cam.c
+    d_radial = np.linalg.norm(relative[:2])
+
+    return u_min, u_max, v_min, v_max, d_radial
 
 
 # -----------------------
