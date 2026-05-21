@@ -36,24 +36,23 @@ def build_vision_matrix(
 ):
     """
     projections: [(idx, u_min, u_max, v_min, v_max, d)]
-    cylinders: [(x, y, r, h)]
+    cylinders: [(x, y, r, h)] eller [(x, y, z, r, h)]
 
     Returns:
         mat[:, 0] = occupancy
         mat[:, 1] = radius
         mat[:, 2] = depth
+        mat[:, 3] = cylinder_id
     """
 
-    # [occupancy, radius, depth]
-    mat = np.zeros((num_bins, 3), dtype=np.float32)
+    mat = np.zeros((num_bins, 4), dtype=np.float32)
+    mat[:, 3] = -1
 
     for (idx, u0, u1, v_min, v_max, d) in projections:
         x, y, r, h = unpack_cylinder(cylinders[idx])
 
         u_center = 0.5 * (u0 + u1)
         theta = math.atan(u_center)
-
-        # theta = math.atan2(y, x)
 
         b = angle_to_bin(
             theta,
@@ -64,11 +63,11 @@ def build_vision_matrix(
         if b is None:
             continue
 
-        # välj närmaste objekt om flera hamnar i samma bin
         if mat[b, 0] == 0 or d < mat[b, 2]:
-            mat[b, 0] = 1.0  # occupancy
-            mat[b, 1] = r    # radius
-            mat[b, 2] = d    # depth
+            mat[b, 0] = 1.0
+            mat[b, 1] = r
+            mat[b, 2] = d
+            mat[b, 3] = idx
 
     return mat
 
