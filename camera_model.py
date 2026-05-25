@@ -151,6 +151,11 @@ def create_camera_pair(
         "increasing max_cam_cyl_dist, increasing pad, or increasing max_tries."
     )
 
+
+def compute_camera_pair(*args, **kwargs):
+    return create_camera_pair(*args, **kwargs)
+
+
 # -----------------------
 # Projektion (pinhole)
 # -----------------------
@@ -208,9 +213,8 @@ def project_cylinder(cam, cylinder):
     v_max = max(v_l1, v_l2, v_r1, v_r2)
 
     # Vision-depth: radialt avstånd i top-down-planet.
-    # Detta matchar representationen:
-    #   x = d * cos(theta)
-    #   y = d * sin(theta)
+    # Med standardpolär theta från vision.image_u_to_polar_theta gäller:
+    #   p_xy = cam.c_xy + d * (cos(theta), sin(theta))
     center = np.array([x, y, z], dtype=float)
     relative = center - cam.c
     d_radial = np.linalg.norm(relative[:2])
