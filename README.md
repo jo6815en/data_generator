@@ -290,10 +290,10 @@ Possible extensions include:
 
 ## Author
 
-Johanna Engman  
-Department of Electrical and Information Technology  
+Johanna Engman Granlund
+Centre for Mathematical Sciences, CVML
 Lund University
 
 ## License
 
-Add your preferred license (MIT, BSD, Apache 2.0, etc.).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
