@@ -290,9 +290,9 @@ Possible extensions include:
 
 ## Author
 
-Johanna Engman Granlund
-Centre for Mathematical Sciences, CVML
-Lund University
+Johanna Engman Granlund  
+Centre for Mathematical Sciences, CVML  
+Lund University  
 
 ## License
 
