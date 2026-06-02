@@ -153,13 +153,6 @@ Background images are loaded from:
 backgrounds/
 ```
 
-Supported formats:
-
-- JPG
-- JPEG
-- PNG
-- WEBP
-
 ---
 
 ## Repository Structure
@@ -274,6 +267,8 @@ dataset/
 
 ---
 
+<!--
+
 ## Future Work
 
 Possible extensions include:
@@ -287,6 +282,8 @@ Possible extensions include:
 - SLAM benchmark generation
 
 ---
+-->
+
 
 ## Author
 
