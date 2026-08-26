@@ -108,7 +108,7 @@ Only cylinders inside the camera field of view are included.
 
 A compact polar representation is generated for each camera.
 
-The field of view is discretized into angular bins.
+The field of view is discretized into bins.
 
 Each bin stores:
 
@@ -132,7 +132,7 @@ vision_matrix.shape
 # (128, 4)
 ```
 
-If multiple cylinders fall into the same angular bin, only the nearest cylinder is retained.
+If multiple cylinders fall into the same bin, only the nearest cylinder is retained.
 
 This representation can be interpreted as a simplified landmark sensor model similar to a polar occupancy map.
 
