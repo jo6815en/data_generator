@@ -62,6 +62,36 @@ def _rect_to_pixel_bounds(u0, u1, v0, v1, width, height, fov_u, fov_v):
 
     return r0, r1, c0, c1
 
+def random_bark_color():
+    palettes = [
+        (90, 75, 60),
+        (110, 95, 75),
+        (75, 70, 65),
+        (125, 110, 90),
+        (65, 60, 55),
+    ]
+
+    base = np.array(random.choice(palettes), dtype=float)
+    jitter = np.random.normal(0, 12, 3)
+    return np.clip(base + jitter, 20, 200).astype(np.uint8)
+
+def make_bark_texture(height, width, base_color, seed):
+    rng = np.random.default_rng(seed)
+    base = np.asarray(base_color, dtype=np.float32)
+
+    pixel_noise = rng.normal(0, 12, (height, width, 1))
+    column_noise = rng.normal(0, 15, (1, width, 1))
+    column_noise = np.repeat(column_noise, height, axis=0)
+
+    texture = base[None, None, :] + pixel_noise + column_noise
+
+    # Cylindrical shading: brighter near the center, darker at the edges
+    x = np.linspace(-1.0, 1.0, width)
+    shading = 0.60 + 0.40 * np.sqrt(np.clip(1.0 - x**2, 0.0, 1.0))
+    texture *= shading[None, :, None]
+
+    return np.clip(texture, 0, 255).astype(np.uint8)
+
 
 # -----------------------
 # MAIN RENDER
@@ -73,6 +103,7 @@ def render_camera_image(
     fov_u=1.0,
     fov_v=1.0,
     background=None,   # None => slumpad bakgrund från backgrounds/
+    appearances=None,
 ):
     width, height = image_size
 
@@ -94,7 +125,14 @@ def render_camera_image(
             continue
 
         r0, r1, c0, c1 = bounds
-        img[r0:r1 + 1, c0:c1 + 1] = _color_to_rgb255(colors[i])
+        h = r1 - r0 + 1
+        w = c1 - c0 + 1
+
+        base_color = appearances[i]["color"]
+        seed = appearances[i]["seed"]
+
+        texture = make_bark_texture(h, w, base_color, seed)
+        img[r0:r1 + 1, c0:c1 + 1] = texture
 
     return img
 
