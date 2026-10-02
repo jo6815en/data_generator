@@ -50,11 +50,14 @@ def create_camera_pair(
     pitch_min_deg=-10.0,
     pitch_max_deg=10.0,
     pad=2.0,
-    min_cam_cyl_dist=1.0,
+    min_cam_cyl_dist=0.05,
     max_cam_cyl_dist=7.0,
     min_visible=2,
     max_tries=5000,
     camera_height=1.7,
+    near_tree_prob=0.4,
+    near_tree_min_dist=0.05,
+    near_tree_max_dist=0.5,
 ):
     if seed is not None:
         random.seed(seed)
@@ -114,22 +117,56 @@ def create_camera_pair(
 
         jitter = np.deg2rad(random.uniform(-angle_jitter_deg, angle_jitter_deg))
         return base_angle + jitter
-        
+
+    near_tree_idx = None        
+    near_tree_mode = random.random() < near_tree_prob
 
     for _ in range(max_tries):
-        pair_center = np.array([
-            random.uniform(xmin - pad, xmax + pad),
-            random.uniform(ymin - pad, ymax + pad),
-            pair_center_z,
-        ])
 
-        angle = random.uniform(0, 2 * np.pi)
+        if near_tree_mode:
+            # Välj en cylinder som kamerorna ska hamna nära
+            near_tree_idx = random.randrange(len(cyls))
+            tx, ty, tz, tr, th = cyls[near_tree_idx]
 
-        offset = np.array([
-            np.cos(angle) * camera_distance,
-            np.sin(angle) * camera_distance,
-            0.0,
-        ])
+            phi = random.uniform(0, 2 * np.pi)
+            surface_dist = random.uniform(
+                near_tree_min_dist,
+                near_tree_max_dist,)
+
+            # Pair center nära cylinderns yta
+            dist_from_center = tr + surface_dist
+
+            pair_center = np.array([
+                tx + dist_from_center * np.cos(phi),
+                ty + dist_from_center * np.sin(phi),
+                pair_center_z,
+            ])
+
+            # Baseline tangentiellt runt cylindern
+            tangent = np.array([
+                -np.sin(phi),
+                np.cos(phi),])
+
+            offset = np.array([
+                tangent[0] * camera_distance,
+                tangent[1] * camera_distance,
+                0.0,])
+
+        else:
+            # Din vanliga fria sampling
+            pair_center = np.array([
+                random.uniform(xmin - pad, xmax + pad),
+                random.uniform(ymin - pad, ymax + pad),
+                pair_center_z,
+            ])
+
+            angle = random.uniform(0, 2 * np.pi)
+
+            offset = np.array([
+                np.cos(angle) * camera_distance,
+                np.sin(angle) * camera_distance,
+                0.0,
+            ])
 
         cam1_pos = pair_center - 0.5 * offset
         cam2_pos = pair_center + 0.5 * offset
@@ -139,8 +176,26 @@ def create_camera_pair(
         if not valid_camera_distance(cam2_pos):
             continue
 
-        theta1 = sample_theta(cam1_pos)
-        theta2 = sample_theta(cam2_pos)
+        if near_tree_mode:
+            # Gemensam yaw för hela kameraparet:
+            # pair center tittar mot foreground-cylindern
+            theta_pair = np.arctan2(
+                ty - pair_center[1],
+                tx - pair_center[0],
+            )
+
+            # Ett gemensamt litet jitter
+            theta_pair += np.deg2rad(
+                random.uniform(-angle_jitter_deg, angle_jitter_deg)
+            )
+
+            theta1 = theta_pair
+            theta2 = theta_pair
+
+        else:
+            # Vanliga kameror
+            theta1 = sample_theta(cam1_pos)
+            theta2 = sample_theta(cam2_pos)
 
         pitch = np.deg2rad(
             random.uniform(pitch_min_deg, pitch_max_deg)
@@ -166,8 +221,8 @@ def create_camera_pair(
         if len(proj2) < min_visible:
             continue
 
-        return cam1, cam2
-
+        return cam1, cam2, near_tree_idx
+    
     raise RuntimeError(
         "Could not sample a valid camera pair. "
         "Try lowering min_cam_cyl_dist, lowering min_visible, "
@@ -204,43 +259,100 @@ def project_cylinder(cam, cylinder):
         x, y, r, h = cylinder
         z = 0.0
 
-    perp = np.array([-cam.dir[1], cam.dir[0], 0.0])
-    perp = perp / np.linalg.norm(perp)
+    center_xy = np.array([x, y], dtype=float)
+    rel_xy = center_xy - cam.c[:2]
+    d = np.linalg.norm(rel_xy)
 
-    base = np.array([x, y, z])
-    left = base + perp * r
-    right = base - perp * r
-
-    bottom_l = left
-    top_l = left + np.array([0.0, 0.0, h])
-
-    bottom_r = right
-    top_r = right + np.array([0.0, 0.0, h])
-
-    res_l1 = project_point(cam, bottom_l)
-    res_l2 = project_point(cam, top_l)
-    res_r1 = project_point(cam, bottom_r)
-    res_r2 = project_point(cam, top_r)
-
-    if None in [res_l1, res_l2, res_r1, res_r2]:
+    # Kamera inuti cylindern
+    if d <= r + 1e-6:
         return None
 
-    (u_l, v_l1), d1 = res_l1
-    (u_l2, v_l2), d2 = res_l2
-    (u_r, v_r1), d3 = res_r1
-    (u_r2, v_r2), d4 = res_r2
+    # --------------------------------------------------
+    # Horisontell utbredning
+    # --------------------------------------------------
 
-    u_min = min(u_l, u_l2, u_r, u_r2)
-    u_max = max(u_l, u_l2, u_r, u_r2)
-    v_min = min(v_l1, v_l2, v_r1, v_r2)
-    v_max = max(v_l1, v_l2, v_r1, v_r2)
+    # Absolut bearing till cylindercentrum
+    bearing = np.arctan2(rel_xy[1], rel_xy[0])
 
-    # Vision-depth: radialt avstånd i top-down-planet.
-    # Med standardpolär theta från vision.image_u_to_polar_theta gäller:
-    #   p_xy = cam.c_xy + d * (cos(theta), sin(theta))
-    center = np.array([x, y, z], dtype=float)
-    relative = center - cam.c
-    d_radial = np.linalg.norm(relative[:2])
+    # Bearing relativt kamerans yaw
+    beta = np.arctan2(
+        np.sin(bearing - cam.theta_xy),
+        np.cos(bearing - cam.theta_xy),
+    )
+
+    # Exakt angular half-width för en cirkel
+    alpha = np.arcsin(np.clip(r / d, 0.0, 1.0))
+
+    angle_left = beta - alpha
+    angle_right = beta + alpha
+
+    # För pinhole-projektionen gäller u = tan(angle)
+    #
+    # Om kanten passerar ±90° blir tan instabil.
+    # Sätt då mycket stort värde; renderern klipper senare mot FOV.
+    eps = 1e-4
+
+    angle_left = np.clip(
+        angle_left,
+        -np.pi / 2 + eps,
+        np.pi / 2 - eps,
+    )
+    angle_right = np.clip(
+        angle_right,
+        -np.pi / 2 + eps,
+        np.pi / 2 - eps,
+    )
+
+    u_min = np.tan(angle_left)
+    u_max = np.tan(angle_right)
+
+    if u_min > u_max:
+        u_min, u_max = u_max, u_min
+
+    # --------------------------------------------------
+    # Vertikal utbredning
+    # --------------------------------------------------
+    #
+    # Använd cylindercentrumets riktning för bottom/top.
+    # Detta är stabilare i närfältet än att kräva att alla
+    # fyra tangent-hörnpunkter ligger framför kameran.
+    # --------------------------------------------------
+
+    bottom = np.array([x, y, z], dtype=float)
+    top = np.array([x, y, z + h], dtype=float)
+
+    res_bottom = project_point(cam, bottom)
+    res_top = project_point(cam, top)
+
+    # Om centrumlinjen ligger helt bakom kameran är
+    # cylindern inte användbar.
+    if res_bottom is None and res_top is None:
+        return None
+
+    vs = []
+
+    if res_bottom is not None:
+        vs.append(res_bottom[0][1])
+
+    if res_top is not None:
+        vs.append(res_top[0][1])
+
+    # Om bara ena änden är framför kameran låter vi cylindern
+    # fortsätta långt utanför bilden åt andra hållet.
+    LARGE_V = 1e4
+
+    if res_bottom is None:
+        v_min = -LARGE_V
+        v_max = max(vs)
+    elif res_top is None:
+        v_min = min(vs)
+        v_max = LARGE_V
+    else:
+        v_min = min(vs)
+        v_max = max(vs)
+
+    # Vision-depth förblir radialt XY-avstånd
+    d_radial = d
 
     return u_min, u_max, v_min, v_max, d_radial
 
@@ -248,30 +360,32 @@ def project_cylinder(cam, cylinder):
 # -----------------------
 # Synlighet / projection per kamera
 # -----------------------
-def compute_visibility(cam, cylinders):
+def compute_visibility(cam, cylinders, fov_u=1.0, fov_v=1.0):
     projections = []
 
     for i, cyl in enumerate(cylinders):
-        if len(cyl) == 5:
-            x, y, z, r, h = cyl
-        else:
-            x, y, r, h = cyl
-            z = 0.0
-
-        center = np.array([x, y, z + h / 2])
-
-        if not in_fov(cam, center):
-            continue
-
         res = project_cylinder(cam, cyl)
+
         if res is None:
             continue
 
         u_min, u_max, v_min, v_max, d = res
-        projections.append((i, u_min, u_max, v_min, v_max, d))
+
+        # Cylindern är synlig om dess projicerade rektangel
+        # överlappar bildens FOV.
+        if (
+            u_max < -fov_u
+            or u_min > fov_u
+            or v_max < -fov_v
+            or v_min > fov_v
+        ):
+            continue
+
+        projections.append(
+            (i, u_min, u_max, v_min, v_max, d)
+        )
 
     return projections
-
 
 def compute_projections(cam1, cam2, cylinders):
     proj1 = compute_visibility(cam1, cylinders)
