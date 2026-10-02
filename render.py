@@ -93,6 +93,29 @@ def make_bark_texture(height, width, base_color, seed):
     return np.clip(texture, 0, 255).astype(np.uint8)
 
 
+def make_ground_background(image_size, cam, fov_v=1.0):
+    width, height = image_size
+    img = np.empty((height, width, 3), dtype=np.uint8)
+
+    # Horisonten uttryckt i samma normaliserade v-koordinat
+    # som används av projektionen.
+    v_horizon = -np.tan(cam.pitch)
+
+    # Samma v -> pixel-mapping som _rect_to_pixel_bounds()
+    horizon = int(round(
+        (fov_v - v_horizon) / (2 * fov_v) * (height - 1)
+    ))
+    horizon = np.clip(horizon, 0, height)
+
+    sky = np.array([190, 210, 225], dtype=np.uint8)
+    ground = np.array([95, 120, 75], dtype=np.uint8)
+
+    img[:horizon] = sky
+    img[horizon:] = ground
+
+    return img
+
+
 # -----------------------
 # MAIN RENDER
 # -----------------------
@@ -102,15 +125,26 @@ def render_camera_image(
     image_size=(256, 256),
     fov_u=1.0,
     fov_v=1.0,
-    background=None,   # None => slumpad bakgrund från backgrounds/
+    background=None,
     appearances=None,
+    cam=None,
 ):
     width, height = image_size
 
-    if background is None:
+    if cam is not None:
+        img = make_ground_background(
+            image_size,
+            cam,
+            fov_v=fov_v,
+        )
+    elif background is None:
         img = _load_random_background(image_size)
     else:
-        img = np.full((height, width, 3), background, dtype=np.uint8)
+        img = np.full(
+            (height, width, 3),
+            background,
+            dtype=np.uint8,
+        )
 
     projections = sorted(projections, key=lambda x: x[5], reverse=True)
 

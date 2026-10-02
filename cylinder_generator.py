@@ -24,7 +24,7 @@ def generate_cylinders(
     xmin=-2, xmax=6,
     ymin=-3, ymax=3,
     r_min=0.3, r_max=0.8,
-    h=50,
+    h=8.0,
     seed=None
 ):
     if seed is not None:

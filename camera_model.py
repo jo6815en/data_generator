@@ -6,24 +6,34 @@ from copy import deepcopy
 # Kamera-klass (3D)
 # -----------------------
 class Camera3D:
-    def __init__(self, position, theta_xy, fov_deg=90):
+    def __init__(self, position, theta_xy, pitch=0.0, fov_deg=90):
         self.c = np.array(position, dtype=float)
         self.theta_xy = theta_xy
+        self.pitch = pitch
 
-        self.dir = np.array([
+        # Horisontell forward/right-bas
+        forward_xy = np.array([
             np.cos(theta_xy),
             np.sin(theta_xy),
-            0.0
+            0.0,
         ])
 
-        self.up = np.array([0.0, 0.0, 1.0])
-
-        # Högerhänt bas
         self.right = np.array([
             np.sin(theta_xy),
             -np.cos(theta_xy),
-            0.0
+            0.0,
         ])
+
+        # Pitch > 0 = kameran tittar uppåt
+        self.dir = (
+            np.cos(pitch) * forward_xy
+            + np.sin(pitch) * np.array([0.0, 0.0, 1.0])
+        )
+        self.dir /= np.linalg.norm(self.dir)
+
+        # Up måste också roteras så att kamerabasen förblir ortonormal
+        self.up = np.cross(self.right, self.dir)
+        self.up /= np.linalg.norm(self.up)
 
         self.fov = np.deg2rad(fov_deg)
 
@@ -37,11 +47,14 @@ def create_camera_pair(
     seed=None,
     camera_distance=2.0,
     angle_jitter_deg=45,
+    pitch_min_deg=-10.0,
+    pitch_max_deg=10.0,
     pad=2.0,
     min_cam_cyl_dist=1.0,
     max_cam_cyl_dist=7.0,
     min_visible=2,
     max_tries=5000,
+    camera_height=1.7,
 ):
     if seed is not None:
         random.seed(seed)
@@ -65,10 +78,7 @@ def create_camera_pair(
         (ymin + ymax) / 2,
     ])
 
-    if len(cyls) > 0:
-        pair_center_z = np.mean([z + h / 2 for (_, _, z, _, h) in cyls])
-    else:
-        pair_center_z = 0.0
+    pair_center_z = camera_height
 
     def valid_camera_distance(cam_pos):
         for x, y, z, r, h in cyls:
@@ -132,8 +142,21 @@ def create_camera_pair(
         theta1 = sample_theta(cam1_pos)
         theta2 = sample_theta(cam2_pos)
 
-        cam1 = Camera3D(cam1_pos, theta1)
-        cam2 = Camera3D(cam2_pos, theta2)
+        pitch = np.deg2rad(
+            random.uniform(pitch_min_deg, pitch_max_deg)
+        )
+
+        cam1 = Camera3D(
+            cam1_pos,
+            theta1,
+            pitch=pitch,
+        )
+
+        cam2 = Camera3D(
+            cam2_pos,
+            theta2,
+            pitch=pitch,
+        )
 
         proj1 = compute_visibility(cam1, cylinders)
         proj2 = compute_visibility(cam2, cylinders)
@@ -332,7 +355,21 @@ def transform_scene_to_cam1(cam1, cam2, cylinders):
         cam_new.dir = to_local_vec(cam.dir)
         cam_new.up = to_local_vec(cam.up)
         cam_new.right = to_local_vec(cam.right)
-        cam_new.theta_xy = np.arctan2(cam_new.dir[1], cam_new.dir[0])
+        cam_new.dir /= np.linalg.norm(cam_new.dir)
+        cam_new.up /= np.linalg.norm(cam_new.up)
+        cam_new.right /= np.linalg.norm(cam_new.right)
+        
+        cam_new.theta_xy = np.arctan2(
+            cam_new.dir[1],
+            cam_new.dir[0],
+        )
+        horizontal_norm = np.linalg.norm(cam_new.dir[:2])
+        
+        cam_new.pitch = np.arctan2(
+            cam_new.dir[2],
+            horizontal_norm,
+        )
+
         return cam_new
 
     def unpack_cylinder(cyl):
