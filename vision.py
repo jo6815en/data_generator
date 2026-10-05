@@ -49,7 +49,7 @@ def build_vision_matrix(
     cylinders,
     num_bins=32,
     fov_degrees=90.0,
-    camera_theta_xy=None,
+    cam=None,
 ):
     """
     projections: [(idx, u_min, u_max, v_min, v_max, d)]
@@ -72,13 +72,12 @@ def build_vision_matrix(
     for (idx, u0, u1, v_min, v_max, d) in projections:
         x, y, r, h = unpack_cylinder(cylinders[idx])
 
-        u_center = 0.5 * (u0 + u1)
-        if camera_theta_xy is None:
-            theta = math.atan(u_center)
-            theta_center = 0.0
-        else:
-            theta = image_u_to_polar_theta(u_center, camera_theta_xy)
-            theta_center = camera_theta_xy
+        # Exakt riktning från kameran till cylindercentrum
+        dx = x - cam.c[0]
+        dy = y - cam.c[1]
+
+        theta = math.atan2(dy, dx)
+        theta_center = cam.theta_xy
 
         b = angle_to_bin(
             theta,
@@ -112,15 +111,12 @@ def build_vision_pair(
     cam1=None,
     cam2=None,
 ):
-    theta1 = cam1.theta_xy if cam1 is not None else None
-    theta2 = cam2.theta_xy if cam2 is not None else None
-
     mat1 = build_vision_matrix(
         proj1,
         cylinders,
         num_bins=num_bins,
         fov_degrees=fov_degrees,
-        camera_theta_xy=theta1,
+        cam=cam1,
     )
 
     mat2 = build_vision_matrix(
@@ -128,7 +124,7 @@ def build_vision_pair(
         cylinders,
         num_bins=num_bins,
         fov_degrees=fov_degrees,
-        camera_theta_xy=theta2,
+        cam=cam2,
     )
 
-    return mat1, mat2
+    return mat1, mat2 

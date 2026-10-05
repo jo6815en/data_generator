@@ -449,60 +449,193 @@ def get_relative_pose(cam1_n, cam2_n):
     return relative_pose
 
 def transform_scene_to_cam1(cam1, cam2, cylinders):
-    r = cam1.right / np.linalg.norm(cam1.right)
-    d = cam1.dir / np.linalg.norm(cam1.dir)
-    u = cam1.up / np.linalg.norm(cam1.up)
+    # Cam1:s yaw i world-frame
+    theta = cam1.theta_xy
 
-    B = np.column_stack([r, d, u])
+    c = np.cos(theta)
+    s = np.sin(theta)
 
-    def to_local_point(p):
-        v = np.asarray(p, dtype=float) - cam1.c
-        return B.T @ v
+    # World XY -> cam1-normaliserad XY
+    R = np.array([
+        [ c,  s],
+        [-s,  c],
+    ])
 
-    def to_local_vec(v):
-        v = np.asarray(v, dtype=float)
-        return B.T @ v
+    def transform_xy(xy):
+        return R @ (np.asarray(xy, dtype=float) - cam1.c[:2])
 
-    def transform_camera(cam):
-        cam_new = deepcopy(cam)
-        cam_new.c = to_local_point(cam.c)
-        cam_new.dir = to_local_vec(cam.dir)
-        cam_new.up = to_local_vec(cam.up)
-        cam_new.right = to_local_vec(cam.right)
-        cam_new.dir /= np.linalg.norm(cam_new.dir)
-        cam_new.up /= np.linalg.norm(cam_new.up)
-        cam_new.right /= np.linalg.norm(cam_new.right)
-        
-        cam_new.theta_xy = np.arctan2(
-            cam_new.dir[1],
-            cam_new.dir[0],
-        )
-        horizontal_norm = np.linalg.norm(cam_new.dir[:2])
-        
-        cam_new.pitch = np.arctan2(
-            cam_new.dir[2],
-            horizontal_norm,
-        )
+    # -----------------------
+    # Cameras
+    # -----------------------
+    cam1_t = deepcopy(cam1)
+    cam2_t = deepcopy(cam2)
 
-        return cam_new
+    cam1_t.c = np.array([0.0, 0.0, cam1.c[2]])
 
-    def unpack_cylinder(cyl):
-        if len(cyl) == 5:
-            x, y, z, r_cyl, h = cyl
-        elif len(cyl) == 4:
-            x, y, r_cyl, h = cyl
-            z = 0.0
-        else:
-            raise ValueError(f"Unexpected cylinder format: {cyl}")
-        return x, y, z, r_cyl, h
+    cam2_xy = transform_xy(cam2.c[:2])
+    cam2_t.c = np.array([
+        cam2_xy[0],
+        cam2_xy[1],
+        cam2.c[2],
+    ])
 
-    cam1_t = transform_camera(cam1)
-    cam2_t = transform_camera(cam2)
+    # Cam1 yaw = 0 i den normaliserade ramen
+    cam1_t.theta_xy = 0.0
+    cam2_t.theta_xy = (
+        cam2.theta_xy - cam1.theta_xy
+    )
 
+    # Wrap yaw
+    cam2_t.theta_xy = (
+        cam2_t.theta_xy + np.pi
+    ) % (2 * np.pi) - np.pi
+
+    # Återskapa camera bases från yaw + pitch
+    cam1_t = Camera3D(
+        cam1_t.c,
+        cam1_t.theta_xy,
+        pitch=cam1.pitch,
+        fov_deg=np.rad2deg(cam1.fov),
+    )
+
+    cam2_t = Camera3D(
+        cam2_t.c,
+        cam2_t.theta_xy,
+        pitch=cam2.pitch,
+        fov_deg=np.rad2deg(cam2.fov),
+    )
+
+    # -----------------------
+    # Cylinders
+    # -----------------------
     cylinders_t = []
+
     for cyl in cylinders:
-        x, y, z, r_cyl, h = unpack_cylinder(cyl)
-        base_t = to_local_point([x, y, z])
-        cylinders_t.append((base_t[0], base_t[1], base_t[2], r_cyl, h))
+        if len(cyl) == 5:
+            x, y, z, r, h = cyl
+        else:
+            x, y, r, h = cyl
+            z = 0.0
+
+        xy = transform_xy([x, y])
+
+        cylinders_t.append((
+            xy[0],
+            xy[1],
+            z,
+            r,
+            h,
+        ))
 
     return cam1_t, cam2_t, cylinders_t
+
+
+def debug_exact_geometry(cam1, cam2, cylinders):
+    def world_to_camera_xy(cam, p):
+        rel = p - cam.c
+
+        # Camera coordinates:
+        # x = right, y = forward
+        return np.array([
+            np.dot(rel, cam.right),
+            np.dot(rel, cam.dir),
+        ])
+
+    A, B = [], []
+
+    for cyl in cylinders:
+        if len(cyl) == 5:
+            x, y, z, r, h = cyl
+        else:
+            x, y, r, h = cyl
+            z = 0.0
+
+        # Använd cylindercentrum på markplanet.
+        p = np.array([x, y, z], dtype=float)
+
+        A.append(world_to_camera_xy(cam1, p))
+        B.append(world_to_camera_xy(cam2, p))
+
+    A = np.asarray(A)
+    B = np.asarray(B)
+
+    # Relativ 2D-rotation direkt från kamerornas baser
+    R = np.array([
+        [
+            np.dot(cam2.right, cam1.right),
+            np.dot(cam2.right, cam1.dir),
+        ],
+        [
+            np.dot(cam2.dir, cam1.right),
+            np.dot(cam2.dir, cam1.dir),
+        ],
+    ])
+
+    # Cam1-origin uttryckt i cam2-koordinater
+    delta = cam1.c - cam2.c
+
+    t = np.array([
+        np.dot(delta, cam2.right),
+        np.dot(delta, cam2.dir),
+    ])
+
+    B_pred = A @ R.T + t
+    e = np.linalg.norm(B_pred - B, axis=1)
+
+    print("EXACT CAMERA-COORDINATE GEOMETRY")
+    print("-" * 50)
+    print(f"Mean:   {e.mean():.8f} m")
+    print(f"Median: {np.median(e):.8f} m")
+    print(f"Max:    {e.max():.8f} m")
+
+
+def debug_vision_geometry(cam, cylinders, vision, fov_degrees=90.0):
+    N = vision.shape[0]
+    fov = np.deg2rad(fov_degrees)
+
+    # Samma bin-centers som modellen senare använder
+    theta_rel = np.linspace(
+        -0.5 * fov,
+        0.5 * fov,
+        N,
+    )
+
+    theta = theta_rel + cam.theta_xy
+    errors = []
+
+    for b in np.where(vision[:, 0] > 0.5)[0]:
+        cid = int(round(vision[b, 3]))
+        if cid < 0:
+            continue
+
+        cyl = cylinders[cid]
+        x, y = cyl[0], cyl[1]
+
+        # Exakt cylindercentrum relativt kameran i top-down XY
+        exact = np.array([
+            x - cam.c[0],
+            y - cam.c[1],
+        ])
+
+        d = vision[b, 2]
+
+        # Vision-representationens rekonstruerade punkt
+        pred = np.array([
+            d * np.cos(theta[b]),
+            d * np.sin(theta[b]),
+        ])
+
+        errors.append(np.linalg.norm(pred - exact))
+
+    errors = np.asarray(errors)
+
+    print("VISION -> EXACT CYLINDER GEOMETRY")
+    print("-" * 50)
+    print(f"N:      {len(errors)}")
+    print(f"Mean:   {errors.mean():.6f} m")
+    print(f"Median: {np.median(errors):.6f} m")
+    print(f"Max:    {errors.max():.6f} m")
+
+    return errors
+
+
